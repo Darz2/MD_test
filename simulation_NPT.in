@@ -1,0 +1,165 @@
+
+#############################################################################
+# Input file for simulating CO2 molecules using the EPM-2 force field
+#############################################################################
+
+#----------------------------------------
+# Global model settings 
+#----------------------------------------
+
+units           real
+atom_style      full
+boundary        p p p
+pair_style      lj/cut/coul/long  14 
+pair_modify     mix geometric tail yes
+kspace_style    pppm 1e-6
+bond_style      harmonic
+angle_style     harmonic
+
+#-------------------------------------------------------
+# Constants and variables
+#-------------------------------------------------------
+
+variable       Temp		    index		253                 # K      
+variable       Pres        index        98.7167                 # in BAR
+variable       RandomSeed   index       3003                 # The random seed for velocity 
+#################### NPT ##############################################################################
+variable       Ninpt    equal       100000       # Initialize the NPT ensemble (very small timesteps)
+variable       Npnpt    equal       10000000      # Production the NPT ensemble
+
+# #################### NVT ##############################################################################
+# variable       Ninvt    equal       100000       # Initialize the NVT ensemble (very small timesteps)
+# variable       Npnvt    equal       5000000       # Production the NVT ensemble
+
+# #################### NVE ##############################################################################
+# variable       Npnve    equal       10000000       # Production the NVE ensemble
+
+#################### SAMPLING ###########################################################################
+variable        Nf          equal       500             # rate of outputting to the log file 
+variable        NBR         equal       ${Npnpt}/100    # Block averaging for density (NPT)
+variable        nb          equal       10              # Number of blocks (fix ordern)
+variable        nbe         equal       20              # Number of block elements (fix ordern)
+# variable        Nvisc       equal       5               # Nevery for viscosity 
+# variable        Ndiff       equal       500            # Nevery for diffusivity (fix ordern: sample data at (Ndiff))
+# variable        Nwrit       equal       10000            # Nwrite for transport properties (fix ordern: write every (Nwrit))
+
+#---------------------------------------------
+# Box, start molecules on simple cubic lattice 
+#---------------------------------------------
+#read_data ./data.lmp     # read the positions --------------comment it out for restarting
+
+#-------------------------------
+# FORCEFIELD - flex EPM2 model
+#-------------------------------
+
+pair_coeff      1   1  0.05589  2.757       # C-C 
+pair_coeff      2   2  0.1599   3.033       # O-O
+#pair_coeff      1   2  0.0946   2.892       # EPM2 contains a geometric mean - only this interaction overrides arith mix
+
+bond_coeff      1       0           1.149
+angle_coeff     1       147.705     180
+
+#-------
+# Masses
+#-------
+
+mass 1 12.0107 
+mass 2 15.9994 
+
+#------------
+# MD settings 
+#------------
+
+group           carb type 1
+group           oxy  type 2
+
+neighbor        3.0 bin
+neigh_modify    every 1 delay 0 check yes
+run_style       verlet
+
+#----------------
+# NPT simulations 
+#----------------
+
+fix         constrain   all   shake   1e-6    1000 0 b 1 
+fix         runnpt      all   npt     temp    ${Temp} ${Temp} 100 iso ${Pres} ${Pres} 1000
+
+#----------
+# Output
+#----------
+
+compute 1 all angle/local theta         # compute angles and dump into file
+
+compute 2 all reduce ave    c_1
+compute 3 all reduce avesq  c_1
+
+compute 4 all   bond/local  dist
+compute 5 all   reduce ave  c_4 
+
+thermo_style custom step pe ke etotal press temp c_2 c_3 c_5
+thermo_modify  flush yes
+thermo ${Nf}
+
+#--------------------
+# Run (Initialization)
+#--------------------
+
+ # initialize to imposed temperature
+ velocity    all create ${Temp} ${RandomSeed} 
+ run         0
+ velocity    all scale ${Temp}
+ velocity    all zero linear         # set box momentum to zero
+
+# timestep    0.0001
+# run         ${Ninpt} 
+
+# timestep    0.001
+# run         ${Ninpt} 
+
+# timestep    0.01
+# run         ${Ninpt} 
+
+# timestep    0.1
+# run         ${Ninpt} 
+
+# timestep    0.2
+# run         ${Ninpt} 
+
+# timestep    0.25
+# run         ${Ninpt} 
+
+# timestep    0.5
+# run         ${Ninpt} 
+
+# timestep    1.0
+# run         ${Ninpt} 
+
+#-----------------------------
+# Production phase NPT
+#----------------------------
+
+unfix       runnpt
+fix         runnpt      all   npt     temp  ${Temp} ${Temp} 100 iso ${Pres} ${Pres} 1000
+
+variable Volume         equal   vol
+variable Density        equal   density
+variable Temperature    equal   temp
+variable Pressure       equal   press
+
+reset_timestep 0
+
+#################### writing avergae's to file from NPT ######################
+# Creating restart files
+restart ${Nf} 1.restart 2.restart
+
+# Getting the average volume of the system
+
+fix VoluAve all ave/time 1 ${Npnpt} ${Npnpt} v_Volume file volume.dat
+
+fix DensAve all ave/time 1 ${NBR} ${NBR} v_Density file density.dat
+
+fix TempAve1 all ave/time 1 ${NBR} ${NBR} v_Temperature file temperature_NPT.dat
+
+fix PressAve1 all ave/time 1 ${NBR} ${NBR} v_Pressure file pressure_NPT.dat
+
+run ${Npnpt}

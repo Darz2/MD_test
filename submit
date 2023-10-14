@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH --job-name=CO2-Flex
+#SBATCH -p parallel-12
+#SBATCH -n 12
+#SBATCH --mem-per-cpu=2G
+#SBATCH -t 6-00:00:00
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=d.raju.tudelft.nl
+
+
+scontrol show hostnames "$SLURM_JOB_NODELIST" > hostfile
+STARTTIME=$(date +%Y-%m-%d%t%k:%M:%S:%N)
+
+lmp=~/lammps/src/ # getting the correct run file location
+mpirun $lmp/lmp_mpi < simulation_NPT.in # computing with n cpu cores.
+wait
+
+ENDTIME=$(date +%Y-%m-%d%t%k:%M:%S:%N)
+echo -e "$SLURM_JOB_ID\t $SLURM_JOB_NAME\t $STARTTIME\t $ENDTIME" >> ./lammps.out
