@@ -25,7 +25,7 @@ variable       Pres        index        98.7167                 # in BAR
 variable       RandomSeed   index       3003                 # The random seed for velocity 
 #################### NPT ##############################################################################
 variable       Ninpt    equal       100000       # Initialize the NPT ensemble (very small timesteps)
-variable       Npnpt    equal       10000000      # Production the NPT ensemble
+variable       Npnpt    equal       5000000      # Production the NPT ensemble
 
 # #################### NVT ##############################################################################
 # variable       Ninvt    equal       100000       # Initialize the NVT ensemble (very small timesteps)
