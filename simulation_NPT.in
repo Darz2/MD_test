@@ -97,7 +97,7 @@ compute 4 all   bond/local  dist
 compute 5 all   reduce ave  c_4 
 
 thermo_style custom step pe ke etotal press temp c_2 c_3 c_5
-thermo_modify  flush yes
+thermo_modify flush yes
 thermo ${Nf}
 
 #--------------------

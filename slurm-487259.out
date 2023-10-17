@@ -1,56 +1,9 @@
+:: ERROR: Unable to proceed: no support for sourcing from '[dash|sh]' shell.
+   This script must be sourced. Did you execute or source this script?
+   Can be caused by sourcing from inside a "shebang-less" script.
+   Can also be caused by sourcing from ZSH version 4.x or older.
 LAMMPS (2 Aug 2023)
 WARNING: Using I/O redirection is unreliable with parallel runs. Better to use the -in switch to read input files. (../lammps.cpp:537)
-
-#############################################################################
-# Input file for simulating CO2 molecules using the EPM-2 force field
-#############################################################################
-
-#----------------------------------------
-# Global model settings
-#----------------------------------------
-
-units           real
-atom_style      full
-boundary        p p p
-pair_style      lj/cut/coul/long  14
-pair_modify     mix geometric tail yes
-kspace_style    pppm 1e-6
-bond_style      harmonic
-angle_style     harmonic
-
-#-------------------------------------------------------
-# Constants and variables
-#-------------------------------------------------------
-
-variable       Temp		    index		253                 # K
-variable       Pres        index        98.7167                 # in BAR
-variable       RandomSeed   index       3003                 # The random seed for velocity
-#################### NPT ##############################################################################
-variable       Ninpt    equal       100000       # Initialize the NPT ensemble (very small timesteps)
-variable       Npnpt    equal       5000000      # Production the NPT ensemble
-
-# #################### NVT ##############################################################################
-# variable       Ninvt    equal       100000       # Initialize the NVT ensemble (very small timesteps)
-# variable       Npnvt    equal       5000000       # Production the NVT ensemble
-
-# #################### NVE ##############################################################################
-# variable       Npnve    equal       10000000       # Production the NVE ensemble
-
-#################### SAMPLING ###########################################################################
-variable        Nf          equal       500             # rate of outputting to the log file
-variable        NBR         equal       ${Npnpt}/100    # Block averaging for density (NPT)
-variable        NBR         equal       5000000/100    
-variable        nb          equal       10              # Number of blocks (fix ordern)
-variable        nbe         equal       20              # Number of block elements (fix ordern)
-# variable        Nvisc       equal       5               # Nevery for viscosity
-# variable        Ndiff       equal       500            # Nevery for diffusivity (fix ordern: sample data at (Ndiff))
-# variable        Nwrit       equal       10000            # Nwrite for transport properties (fix ordern: write every (Nwrit))
-
-#---------------------------------------------
-# Box, start molecules on simple cubic lattice
-#---------------------------------------------
-#read_data ./data.lmp     # read the positions --------------comment it out for restarting
-read_restart 2.restart
 Reading restart file ...
   restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
   restoring atom style full from restart
@@ -71,152 +24,18 @@ Finding 1-2 1-3 1-4 neighbors ...
      2 = max # of special neighbors
   special bonds CPU = 0.003 seconds
   read_restart CPU = 0.015 seconds
-#-------------------------------
-# FORCEFIELD - flex EPM2 model
-#-------------------------------
-
-pair_coeff      1   1  0.05589  2.757       # C-C
-pair_coeff      2   2  0.1599   3.033       # O-O
-#pair_coeff      1   2  0.0946   2.892       # EPM2 contains a geometric mean - only this interaction overrides arith mix
-
-bond_coeff      1       0           1.149
-angle_coeff     1       147.705     180
-
-#-------
-# Masses
-#-------
-
-mass 1 12.0107
-mass 2 15.9994
-
-#------------
-# MD settings
-#------------
-
-group           carb type 1
 2000 atoms in group carb
-group           oxy  type 2
 1000 atoms in group oxy
-
-neighbor        3.0 bin
-neigh_modify    every 1 delay 0 check yes
-run_style       verlet
-
-#----------------
-# NPT simulations
-#----------------
-
-fix         constrain   all   shake   1e-6    1000 0 b 1
 Finding SHAKE clusters ...
        0 = # of size 2 clusters
     1000 = # of size 3 clusters
        0 = # of size 4 clusters
        0 = # of frozen angles
   find clusters CPU = 0.001 seconds
-fix         runnpt      all   npt     temp    ${Temp} ${Temp} 100 iso ${Pres} ${Pres} 1000
-fix         runnpt      all   npt     temp    253 ${Temp} 100 iso ${Pres} ${Pres} 1000
-fix         runnpt      all   npt     temp    253 253 100 iso ${Pres} ${Pres} 1000
-fix         runnpt      all   npt     temp    253 253 100 iso 98.7167 ${Pres} 1000
-fix         runnpt      all   npt     temp    253 253 100 iso 98.7167 98.7167 1000
 Resetting global fix info from restart file:
   fix style: npt, fix ID: runnpt
-
-#----------
-# Output
-#----------
-
-compute 1 all angle/local theta         # compute angles and dump into file
-
-compute 2 all reduce ave    c_1
-compute 3 all reduce avesq  c_1
-
-compute 4 all   bond/local  dist
-compute 5 all   reduce ave  c_4
-
-thermo_style custom step pe ke etotal press temp c_2 c_3 c_5
-thermo_modify flush yes
-thermo ${Nf}
-thermo 500
-
-#--------------------
-# Run (Initialization)
-#--------------------
-
- # initialize to imposed temperature
-#  velocity    all create ${Temp} ${RandomSeed}
-#  run         0
-#  velocity    all scale ${Temp}
-#  velocity    all zero linear         # set box momentum to zero
-
-# timestep    0.0001
-# run         ${Ninpt}
-
-# timestep    0.001
-# run         ${Ninpt}
-
-# timestep    0.01
-# run         ${Ninpt}
-
-# timestep    0.1
-# run         ${Ninpt}
-
-# timestep    0.2
-# run         ${Ninpt}
-
-# timestep    0.25
-# run         ${Ninpt}
-
-# timestep    0.5
-# run         ${Ninpt}
-
- timestep    1.0
-# run         ${Ninpt}
-
-#-----------------------------
-# Production phase NPT
-#----------------------------
-
-unfix       runnpt
-fix         runnpt      all   npt     temp  ${Temp} ${Temp} 100 iso ${Pres} ${Pres} 1000
-fix         runnpt      all   npt     temp  253 ${Temp} 100 iso ${Pres} ${Pres} 1000
-fix         runnpt      all   npt     temp  253 253 100 iso ${Pres} ${Pres} 1000
-fix         runnpt      all   npt     temp  253 253 100 iso 98.7167 ${Pres} 1000
-fix         runnpt      all   npt     temp  253 253 100 iso 98.7167 98.7167 1000
 Resetting global fix info from restart file:
   fix style: npt, fix ID: runnpt
-
-variable Volume         equal   vol
-variable Density        equal   density
-variable Temperature    equal   temp
-variable Pressure       equal   press
-
-#reset_timestep 0       ------------------------comment it out for restarting
-
-#################### writing avergae's to file from NPT ######################
-# Creating restart files
-restart ${Nf} 1.restart 2.restart
-restart 500 1.restart 2.restart
-
-# Getting the average volume of the system
-
-fix VoluAve all ave/time 1 ${Npnpt} ${Npnpt} v_Volume file volume.dat
-fix VoluAve all ave/time 1 5000000 ${Npnpt} v_Volume file volume.dat
-fix VoluAve all ave/time 1 5000000 5000000 v_Volume file volume.dat
-
-fix DensAve all ave/time 1 ${NBR} ${NBR} v_Density file density.dat
-fix DensAve all ave/time 1 50000 ${NBR} v_Density file density.dat
-fix DensAve all ave/time 1 50000 50000 v_Density file density.dat
-
-fix TempAve1 all ave/time 1 ${NBR} ${NBR} v_Temperature file temperature_NPT.dat
-fix TempAve1 all ave/time 1 50000 ${NBR} v_Temperature file temperature_NPT.dat
-fix TempAve1 all ave/time 1 50000 50000 v_Temperature file temperature_NPT.dat
-
-fix PressAve1 all ave/time 1 ${NBR} ${NBR} v_Pressure file pressure_NPT.dat
-fix PressAve1 all ave/time 1 50000 ${NBR} v_Pressure file pressure_NPT.dat
-fix PressAve1 all ave/time 1 50000 50000 v_Pressure file pressure_NPT.dat
-
-run ${Npnpt}
-run 5000000
 PPPM initialization ...
   using 12-bit tables for long-range coulomb (../kspace.cpp:342)
   G vector (1/distance) = 0.23066917
@@ -240,6 +59,10 @@ Neighbor list info ...
       pair build: half/bin/newton
       stencil: half/bin/3d
       bin: standard
+Setting up Verlet run ...
+  Unit style    : real
+  Current step  : 20000000
+  Time step     : 1
 Per MPI rank memory allocation (min/avg/max) = 9.285 | 9.33 | 9.364 Mbytes
    Step         PotEng         KinEng         TotEng         Press           Temp           c_2            c_3            c_5      
   20000000  -1843.9885      1689.8814     -154.10709      1316.8979      243.06996      177.13974      31380.579      1.149        
