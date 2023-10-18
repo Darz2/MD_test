@@ -1,4 +1,3 @@
-
 #############################################################################
 # Input file for simulating CO2 molecules using the EPM-2 force field
 #############################################################################
@@ -34,7 +33,7 @@ variable       Ninvt    equal       10000       # Initialize the NVT ensemble (v
 variable       Npnvt    equal       500000       # Production the NVT ensemble
 
 # #################### NVE ##############################################################################
-# variable       Npnve    equal       10000000       # Production the NVE ensemble
+variable       Npnve    equal       10000000       # Production the NVE ensemble
 
 #################### SAMPLING ###########################################################################
 variable        Nf          equal       500             # rate of outputting to the log file 
@@ -240,5 +239,47 @@ fix PressAve all ave/time 1 1 ${Nf} v_P1 file pressure_NVT.dat
 thermo_style custom step pe ke etotal press temp
 
 run ${Npnvt}
+
+#################### 3) Simulating in NVE ensmeble ##############################
+# Scaling the temperature (kinetic energy) according to the average total energy
+
+variable TempNVE equal (f_TempAve*(f_TEAve-f_PEAve)/(f_KEAve))
+velocity all scale ${TempNVE}
+
+unfix TEAve
+unfix KEAve
+unfix PEAve
+unfix TempAve
+
+# changing the ensemble to NVE
+
+unfix runnvt
+fix runnve all nve
+
+
+# computing average total energy, pontential energy, temperature, and pressure over time
+
+variable TE equal etotal
+fix TEAve all ave/time 1 1 ${Nf} v_TE file TotalE_NVE.dat
+
+variable PE equal pe
+fix PEAve all ave/time 1 1 ${Nf} v_PE file PotenE_NVE.dat
+
+compute T all temp
+fix TempAve all ave/time 1 1 ${Nf} c_T file temperature_NVE.dat
+
+compute P all pressure T
+fix PressAve all ave/time 1 1  ${Nf} c_P file pressure_NVE.dat
+
+#--------------------------- Invoke OCTP ----------------------------------#
+
+# computing self-diffusion and Onsager coefficients using the OCTP plugin
+compute positions all position
+fix f1 all ordern diffusivity ${Ndiff} ${Nwrit} c_positions nb ${nb} nbe ${nbe}
+
+# computing shear and bulk viscosities  using the OCTP plugin
+fix f2 all ordern viscosity ${Nvisc} ${Nwrit} c_P nb ${nb} nbe ${nbe}
+
+run ${Npnve}
 
 quit
