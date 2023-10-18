@@ -1,0 +1,285 @@
+#############################################################################
+# Input file for simulating CO2 molecules using the EPM-2 force field
+#############################################################################
+
+#----------------------------------------
+# Global model settings 
+#----------------------------------------
+
+units           real
+atom_style      full
+boundary        p p p
+pair_style      lj/cut/coul/long  14 
+pair_modify     mix geometric tail yes
+kspace_style    pppm 1e-6
+bond_style      harmonic
+angle_style     harmonic
+
+#-------------------------------------------------------
+# Constants and variables
+#-------------------------------------------------------
+
+variable       Temp		    index		253                 # K      
+variable       Pres        index        98.7167                 # in BAR
+variable       RandomSeed   index       3003                 # The random seed for velocity 
+#################### NPT ##############################################################################
+#variable       Ninpt    equal       100000       # Initialize the NPT ensemble (very small timesteps)
+variable       Npnpt    equal       5000      # Production the NPT ensemble
+
+variable        tps         equal       10000    	# time in fs to expand box to final dimensions
+variable        Niexp       equal       v_tps/0.5   # MD steps required to attain boxLenFinal
+# #################### NVT ##############################################################################
+variable       Ninvt    equal       10000       # Initialize the NVT ensemble (very small timesteps)
+variable       Npnvt    equal       500000       # Production the NVT ensemble
+
+# #################### NVE ##############################################################################
+variable       Npnve    equal       10000000       # Production the NVE ensemble
+
+#################### SAMPLING ###########################################################################
+variable        Nf          equal       500             # rate of outputting to the log file 
+variable        NBR         equal       ${Npnpt}/100    # Block averaging for density (NPT)
+variable        nb          equal       10              # Number of blocks (fix ordern)
+variable        nbe         equal       20              # Number of block elements (fix ordern)
+variable        Nvisc       equal       5               # Nevery for viscosity 
+variable        Ndiff       equal       500            # Nevery for diffusivity (fix ordern: sample data at (Ndiff))
+variable        Nwrit       equal       10000            # Nwrite for transport properties (fix ordern: write every (Nwrit))
+
+#---------------------------------------------
+# Box, start molecules on simple cubic lattice 
+#---------------------------------------------
+#read_data ./data.lmp     # read the positions --------------comment it out for restarting
+read_restart 2.restart
+#-------------------------------
+# FORCEFIELD - flex EPM2 model
+#-------------------------------
+
+pair_coeff      1   1  0.05589  2.757       # C-C 
+pair_coeff      2   2  0.1599   3.033       # O-O
+#pair_coeff      1   2  0.0946   2.892       # EPM2 contains a geometric mean - only this interaction overrides arith mix
+
+bond_coeff      1       0           1.149
+angle_coeff     1       147.705     180
+
+#-------
+# Masses
+#-------
+
+mass 1 12.0107 
+mass 2 15.9994 
+
+#------------
+# MD settings 
+#------------
+
+group           carb type 1
+group           oxy  type 2
+
+neighbor        3.0 bin
+neigh_modify    every 1 delay 0 check yes
+run_style       verlet
+
+#----------------
+# NPT simulations 
+#----------------
+
+fix         constrain   all   shake   1e-6    1000 0 b 1 
+fix         runnpt      all   npt     temp    ${Temp} ${Temp} 100 iso ${Pres} ${Pres} 1000
+
+#----------
+# Output
+#----------
+
+compute 1 all angle/local theta         # compute angles and dump into file
+
+compute 2 all reduce ave    c_1
+compute 3 all reduce avesq  c_1
+
+compute 4 all   bond/local  dist
+compute 5 all   reduce ave  c_4 
+
+thermo_style custom step pe ke etotal press temp c_2 c_3 c_5
+thermo_modify flush yes
+thermo ${Nf}
+
+#--------------------
+# Run (Initialization)
+#--------------------
+
+ # initialize to imposed temperature
+#  velocity    all create ${Temp} ${RandomSeed} 
+#  run         0
+#  velocity    all scale ${Temp}
+#  velocity    all zero linear         # set box momentum to zero
+
+# timestep    0.0001
+# run         ${Ninpt} 
+
+# timestep    0.001
+# run         ${Ninpt} 
+
+# timestep    0.01
+# run         ${Ninpt} 
+
+# timestep    0.1
+# run         ${Ninpt} 
+
+# timestep    0.2
+# run         ${Ninpt} 
+
+# timestep    0.25
+# run         ${Ninpt} 
+
+# timestep    0.5
+# run         ${Ninpt} 
+
+ timestep    1.0
+# run         ${Ninpt} 
+
+#-----------------------------
+# Production phase NPT
+#----------------------------
+
+unfix       runnpt
+fix         runnpt      all   npt     temp  ${Temp} ${Temp} 100 iso ${Pres} ${Pres} 1000
+
+variable Volume         equal   vol
+variable Density        equal   density
+variable Temperature    equal   temp
+variable Pressure       equal   press
+
+#reset_timestep 0       ------------------------comment it out for restarting
+
+#################### writing avergae's to file from NPT ######################
+# Creating restart files
+restart ${Nf} 1.restart 2.restart
+
+# Getting the average volume of the system
+
+fix VoluAve all ave/time 1 ${Npnpt} ${Npnpt} v_Volume file volume.dat
+
+fix DensAve all ave/time 1 ${NBR} ${NBR} v_Density file density.dat
+
+fix TempAve1 all ave/time 1 ${NBR} ${NBR} v_Temperature file temperature_NPT.dat
+
+fix PressAve1 all ave/time 1 ${NBR} ${NBR} v_Pressure file pressure_NPT.dat
+
+run ${Npnpt}
+
+#----
+# NVT 
+#----
+
+variable    boxLenCurr      equal   xhi-xlo                                     # instantaneous box length
+variable    boxLenFinal    equal   (f_VoluAve^(1.0/3.0))         			    # volume form 25 ns
+#variable    boxLenFinal     equal   (64694.1^(1.0/3.0))         			    # volume form 25 ns
+variable    vexp            equal   (v_boxLenFinal-v_boxLenCurr)/v_tps      # units of Ang / fs
+
+print 	"Current box length is ${boxLenCurr}"
+print 	"Target box length is ${boxLenFinal}"
+print 	"The velocity of expansion of the box is ${vexp}"
+
+unfix runnpt
+fix   runnvt all nvt temp ${Temp} ${Temp} 100
+
+
+fix boxExpand all deform 1 x  vel ${vexp} &
+                           y  vel ${vexp} &
+                           z  vel ${vexp} & 
+                           units box
+                    
+unfix DensAve
+unfix VoluAve
+unfix TempAve1
+unfix PressAve1
+
+thermo_style custom step pe ke etotal press xlo ylo zlo xhi yhi zhi
+
+run         ${Niexp}
+unfix       boxExpand
+
+#-----------------------
+# NVT Pre-Initialization
+#-----------------------
+
+timestep    0.1
+run         ${Ninvt} 
+
+timestep    0.2
+run         ${Ninvt} 
+
+timestep    0.25
+run         ${Ninvt} 
+
+timestep    0.5
+run         ${Ninvt} 
+
+timestep    1.0
+run         ${Ninvt}
+
+reset_timestep 0
+
+#################### writing avergae's to file from NVT ######################
+
+variable TotEn equal etotal
+variable KinEn equal ke
+variable PotEn equal pe
+variable T1 equal temp
+variable P1 equal press
+
+fix TEAve all ave/time 1 1 ${Nf} v_TotEn file TotalE.dat
+
+fix KEAve all ave/time 1 1 ${Nf} v_KinEn file KinE.dat
+
+fix PEAve all ave/time 1 1 ${Nf} v_PotEn file PotenE.dat
+
+fix TempAve all ave/time 1 1 ${Nf} v_T1 file temperature_NVT.dat
+
+fix PressAve all ave/time 1 1 ${Nf} v_P1 file pressure_NVT.dat
+
+thermo_style custom step pe ke etotal press temp
+
+run ${Npnvt}
+
+#################### 3) Simulating in NVE ensmeble ##############################
+# Scaling the temperature (kinetic energy) according to the average total energy
+
+variable TempNVE equal (f_TempAve*(f_TEAve-f_PEAve)/(f_KEAve))
+velocity all scale ${TempNVE}
+
+unfix TEAve
+unfix KEAve
+unfix PEAve
+unfix TempAve
+
+# changing the ensemble to NVE
+
+unfix runnvt
+fix runnve all nve
+
+
+# computing average total energy, pontential energy, temperature, and pressure over time
+
+variable TE equal etotal
+fix TEAve all ave/time 1 1 ${Nf} v_TE file TotalE_NVE.dat
+
+variable PE equal pe
+fix PEAve all ave/time 1 1 ${Nf} v_PE file PotenE_NVE.dat
+
+compute T all temp
+fix TempAve all ave/time 1 1 ${Nf} c_T file temperature_NVE.dat
+
+compute P all pressure T
+fix PressAve all ave/time 1 1  ${Nf} c_P file pressure_NVE.dat
+
+#--------------------------- Invoke OCTP ----------------------------------#
+
+# computing self-diffusion and Onsager coefficients using the OCTP plugin
+compute positions all position
+fix f1 all ordern diffusivity ${Ndiff} ${Nwrit} c_positions nb ${nb} nbe ${nbe}
+
+# computing shear and bulk viscosities  using the OCTP plugin
+fix f2 all ordern viscosity ${Nvisc} ${Nwrit} c_P nb ${nb} nbe ${nbe}
+
+run ${Npnve}
+
+quit
