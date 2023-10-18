@@ -24,12 +24,14 @@ variable       Temp		    index		253                 # K
 variable       Pres        index        98.7167                 # in BAR
 variable       RandomSeed   index       3003                 # The random seed for velocity 
 #################### NPT ##############################################################################
-variable       Ninpt    equal       100000       # Initialize the NPT ensemble (very small timesteps)
-variable       Npnpt    equal       5000000      # Production the NPT ensemble
+#variable       Ninpt    equal       100000       # Initialize the NPT ensemble (very small timesteps)
+variable       Npnpt    equal       5000      # Production the NPT ensemble
 
+variable        tps         equal       10000    	# time in fs to expand box to final dimensions
+variable        Niexp       equal       v_tps/0.5   # MD steps required to attain boxLenFinal
 # #################### NVT ##############################################################################
-# variable       Ninvt    equal       100000       # Initialize the NVT ensemble (very small timesteps)
-# variable       Npnvt    equal       5000000       # Production the NVT ensemble
+variable       Ninvt    equal       10000       # Initialize the NVT ensemble (very small timesteps)
+variable       Npnvt    equal       500000       # Production the NVT ensemble
 
 # #################### NVE ##############################################################################
 # variable       Npnve    equal       10000000       # Production the NVE ensemble
@@ -39,9 +41,9 @@ variable        Nf          equal       500             # rate of outputting to 
 variable        NBR         equal       ${Npnpt}/100    # Block averaging for density (NPT)
 variable        nb          equal       10              # Number of blocks (fix ordern)
 variable        nbe         equal       20              # Number of block elements (fix ordern)
-# variable        Nvisc       equal       5               # Nevery for viscosity 
-# variable        Ndiff       equal       500            # Nevery for diffusivity (fix ordern: sample data at (Ndiff))
-# variable        Nwrit       equal       10000            # Nwrite for transport properties (fix ordern: write every (Nwrit))
+variable        Nvisc       equal       5               # Nevery for viscosity 
+variable        Ndiff       equal       500            # Nevery for diffusivity (fix ordern: sample data at (Ndiff))
+variable        Nwrit       equal       10000            # Nwrite for transport properties (fix ordern: write every (Nwrit))
 
 #---------------------------------------------
 # Box, start molecules on simple cubic lattice 
@@ -163,3 +165,80 @@ fix TempAve1 all ave/time 1 ${NBR} ${NBR} v_Temperature file temperature_NPT.dat
 fix PressAve1 all ave/time 1 ${NBR} ${NBR} v_Pressure file pressure_NPT.dat
 
 run ${Npnpt}
+
+#----
+# NVT 
+#----
+
+variable    boxLenCurr      equal   xhi-xlo                                     # instantaneous box length
+variable    boxLenFinal    equal   (f_VoluAve^(1.0/3.0))         			    # volume form 25 ns
+#variable    boxLenFinal     equal   (64694.1^(1.0/3.0))         			    # volume form 25 ns
+variable    vexp            equal   (v_boxLenFinal-v_boxLenCurr)/v_tps      # units of Ang / fs
+
+print 	"Current box length is ${boxLenCurr}"
+print 	"Target box length is ${boxLenFinal}"
+print 	"The velocity of expansion of the box is ${vexp}"
+
+unfix runnpt
+fix   runnvt all nvt temp ${Temp} ${Temp} 100
+
+
+fix boxExpand all deform 1 x  vel ${vexp} &
+                           y  vel ${vexp} &
+                           z  vel ${vexp} & 
+                           units box
+                    
+unfix DensAve
+unfix VoluAve
+unfix TempAve1
+unfix PressAve1
+
+thermo_style custom step pe ke etotal press xlo ylo zlo xhi yhi zhi
+
+run         ${Niexp}
+unfix       boxExpand
+
+#-----------------------
+# NVT Pre-Initialization
+#-----------------------
+
+timestep    0.1
+run         ${Ninvt} 
+
+timestep    0.2
+run         ${Ninvt} 
+
+timestep    0.25
+run         ${Ninvt} 
+
+timestep    0.5
+run         ${Ninvt} 
+
+timestep    1.0
+run         ${Ninvt}
+
+reset_timestep 0
+
+#################### writing avergae's to file from NVT ######################
+
+variable TotEn equal etotal
+variable KinEn equal ke
+variable PotEn equal pe
+variable T1 equal temp
+variable P1 equal press
+
+fix TEAve all ave/time 1 1 ${Nf} v_TotEn file TotalE.dat
+
+fix KEAve all ave/time 1 1 ${Nf} v_KinEn file KinE.dat
+
+fix PEAve all ave/time 1 1 ${Nf} v_PotEn file PotenE.dat
+
+fix TempAve all ave/time 1 1 ${Nf} v_T1 file temperature_NVT.dat
+
+fix PressAve all ave/time 1 1 ${Nf} v_P1 file pressure_NVT.dat
+
+thermo_style custom step pe ke etotal press temp
+
+run ${Npnvt}
+
+quit
